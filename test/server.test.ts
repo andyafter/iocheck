@@ -121,6 +121,34 @@ describe("app", () => {
 
     await app.close();
   });
+
+  it("exposes Prometheus metrics", async () => {
+    const app = buildApp();
+
+    await app.inject({
+      method: "POST",
+      url: "/lookup",
+      payload: {
+        type: "domain",
+        value: "example.com",
+      },
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/metrics",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/plain");
+    expect(response.body).toContain("iocheck_http_requests_total");
+    expect(response.body).toContain("iocheck_http_request_duration_seconds_bucket");
+    expect(response.body).toContain("iocheck_http_in_flight_requests");
+    expect(response.body).toContain('iocheck_lookup_total{type="domain",verdict="unknown"}');
+    expect(response.body).toContain("process_cpu_seconds_total");
+
+    await app.close();
+  });
 });
 
 describe("config", () => {

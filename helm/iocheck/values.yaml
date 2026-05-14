@@ -62,3 +62,24 @@ prometheus:
     limits:
       cpu: 500m
       memory: 512Mi
+
+grafana:
+  enabled: true
+  image:
+    repository: grafana/grafana
+    tag: 11.4.0
+    pullPolicy: IfNotPresent
+  admin:
+    user: admin
+    password: admin
+  service:
+    type: NodePort
+    port: 3000
+    nodePort: 30091
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

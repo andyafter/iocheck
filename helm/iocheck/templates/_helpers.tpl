@@ -35,3 +35,7 @@ app.kubernetes.io/component: app
 {{- define "iocheck.prometheusName" -}}
 {{- printf "%s-prometheus" (include "iocheck.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+
+{{- define "iocheck.grafanaName" -}}
+{{- printf "%s-grafana" (include "iocheck.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}

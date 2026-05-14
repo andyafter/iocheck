@@ -1,10 +1,13 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ZodError } from "zod";
 
+import { recordIocUpsert, recordLookup, recordValidationFailure } from "../metrics/index.js";
 import { iocUpsertRequestSchema, lookupRequestSchema } from "../schemas/ioc.js";
 import type { IocRecord, LookupResponse } from "../types/ioc.js";
 
-function sendValidationError(reply: FastifyReply, error: ZodError) {
+function sendValidationError(route: string, reply: FastifyReply, error: ZodError) {
+  recordValidationFailure(route);
+
   return reply.status(400).send({
     error: "Invalid request body",
     details: error.issues.map((issue) => issue.message),
@@ -16,8 +19,10 @@ export async function registerIocRoutes(app: FastifyInstance): Promise<void> {
     const result = lookupRequestSchema.safeParse(request.body);
 
     if (!result.success) {
-      return sendValidationError(reply, result.error);
+      return sendValidationError("/lookup", reply, result.error);
     }
+
+    recordLookup(result.data.type, "unknown");
 
     return { verdict: "unknown" };
   });
@@ -26,8 +31,10 @@ export async function registerIocRoutes(app: FastifyInstance): Promise<void> {
     const result = iocUpsertRequestSchema.safeParse(request.body);
 
     if (!result.success) {
-      return sendValidationError(reply, result.error);
+      return sendValidationError("/ioc", reply, result.error);
     }
+
+    recordIocUpsert(result.data.type, "success");
 
     return reply.status(201).send({
       ...result.data,

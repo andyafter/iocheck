@@ -61,6 +61,7 @@ The Helm chart in `helm/iocheck/` deploys:
 - the `iocheck` TypeScript service as a Kubernetes Deployment and Service
 - PostgreSQL as one StatefulSet pod with a persistent volume claim
 - Prometheus as one Deployment pod for later service monitoring
+- Grafana as one Deployment pod with a pre-provisioned Prometheus datasource and `iocheck API` dashboard
 
 Prerequisites:
 
@@ -85,6 +86,7 @@ On macOS with Minikube's Docker driver, `minikube service --url` opens a tunnel 
 ```sh
 make app-url
 make prometheus-url
+make grafana-url
 ```
 
 For a simpler local demo, use Kubernetes port-forwarding instead:
@@ -110,14 +112,23 @@ make prometheus-forward
 
 Then open `http://127.0.0.1:9090`.
 
+Grafana can be forwarded on a separate local port:
+
+```sh
+make grafana-forward
+```
+
+Then open `http://127.0.0.1:3001` and log in with `admin` / `admin`. The chart provisions Prometheus as the default datasource and adds an `iocheck API` dashboard under the `iocheck` folder.
+
 Change Kubernetes resources and storage in `helm/iocheck/values.yaml`:
 
 - app CPU/memory: `resources`
 - database CPU/memory: `postgres.resources`
 - database persistent storage size: `postgres.persistence.size`
 - Prometheus CPU/memory: `prometheus.resources`
+- Grafana CPU/memory and admin credentials: `grafana`
 
-The chart defaults the app to two pods so traffic can be shared. PostgreSQL and Prometheus each run as one pod by design for this local demo.
+The chart defaults the app to two pods so traffic can be shared. PostgreSQL, Prometheus, and Grafana each run as one pod by design for this local demo.
 
 ## Side Notes
 

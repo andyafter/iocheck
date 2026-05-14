@@ -6,5 +6,12 @@ Service URL in Minikube:
 Prometheus URL in Minikube:
   minikube service {{ include "iocheck.prometheusName" . }} --url
 
+Grafana URL in Minikube:
+  minikube service {{ include "iocheck.grafanaName" . }} --url
+
+Grafana login:
+  username: {{ .Values.grafana.admin.user }}
+  password: {{ .Values.grafana.admin.password }}
+
 Change resources and storage in:
-  charts/iocheck/values.yaml
+  helm/iocheck/values.yaml
