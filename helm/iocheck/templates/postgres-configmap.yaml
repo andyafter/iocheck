@@ -1,0 +1,12 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "iocheck.postgresName" . }}-init
+  labels:
+    {{- include "iocheck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+data:
+  001_create_iocs.sql: |
+{{ required "postgres.initSql must be set. Use --set-file postgres.initSql=database/migrations/001_create_iocs.sql" .Values.postgres.initSql | indent 4 }}
+{{- end }}

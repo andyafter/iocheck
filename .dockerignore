@@ -1,0 +1,10 @@
+.git
+.env
+dist
+node_modules
+npm-debug.log
+coverage
+database/seed/.env
+database/seed/venv
+database/seed/.venv
+database/seed/batches.json

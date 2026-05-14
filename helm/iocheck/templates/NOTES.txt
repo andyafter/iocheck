@@ -1,0 +1,10 @@
+iocheck has been installed.
+
+Service URL in Minikube:
+  minikube service {{ include "iocheck.fullname" . }} --url
+
+Prometheus URL in Minikube:
+  minikube service {{ include "iocheck.prometheusName" . }} --url
+
+Change resources and storage in:
+  charts/iocheck/values.yaml

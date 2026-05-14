@@ -1,0 +1,14 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "iocheck.fullname" . }}
+  labels:
+    {{- include "iocheck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "iocheck.selectorLabels" . | nindent 6 }}
+{{- end }}

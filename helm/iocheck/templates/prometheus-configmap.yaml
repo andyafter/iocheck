@@ -1,0 +1,25 @@
+{{- if .Values.prometheus.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "iocheck.prometheusName" . }}
+  labels:
+    {{- include "iocheck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets:
+              - localhost:9090
+
+      - job_name: iocheck
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - {{ include "iocheck.fullname" . }}:{{ .Values.service.port }}
+{{- end }}
