@@ -1,0 +1,30 @@
+{
+  "name": "iocheck",
+  "version": "0.1.0",
+  "description": "IOC check service",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^20.19.41",
+    "eslint": "^9.39.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.59.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "fastify": "^5.8.5",
+    "pino": "^10.3.1"
+  }
+}
