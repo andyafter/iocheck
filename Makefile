@@ -5,7 +5,7 @@ IMAGE ?= iocheck
 TAG ?= latest
 POSTGRES_INIT_SQL ?= database/migrations/001_create_iocs.sql
 
-.PHONY: minikube-start image helm-install helm-upgrade helm-uninstall status app-url prometheus-url
+.PHONY: minikube-start image helm-install helm-upgrade helm-uninstall status app-url prometheus-url app-forward prometheus-forward
 
 minikube-start:
 	minikube start
@@ -34,3 +34,9 @@ app-url:
 
 prometheus-url:
 	@minikube service $(RELEASE)-prometheus --namespace $(NAMESPACE) --url
+
+app-forward:
+	kubectl port-forward --namespace $(NAMESPACE) svc/$(RELEASE) 3000:3000
+
+prometheus-forward:
+	kubectl port-forward --namespace $(NAMESPACE) svc/$(RELEASE)-prometheus 9090:9090

@@ -80,22 +80,35 @@ make status
 
 The install target injects the existing migration at `database/migrations/001_create_iocs.sql` into the Postgres init ConfigMap with Helm's `--set-file` flag.
 
-Get local URLs:
+On macOS with Minikube's Docker driver, `minikube service --url` opens a tunnel and keeps the terminal attached. You can use these targets, but leave that terminal open while you test from another terminal:
 
 ```sh
 make app-url
 make prometheus-url
 ```
 
-Smoke test the service:
+For a simpler local demo, use Kubernetes port-forwarding instead:
 
 ```sh
-APP_URL="$(make app-url)"
-curl "$APP_URL/healthz"
-curl -X POST "$APP_URL/lookup" \
+make app-forward
+```
+
+Then smoke test the service from another terminal:
+
+```sh
+curl http://127.0.0.1:3000/healthz
+curl -X POST http://127.0.0.1:3000/lookup \
   -H "content-type: application/json" \
   -d '{"type":"ip","value":"8.8.8.8"}'
 ```
+
+Prometheus can be forwarded the same way:
+
+```sh
+make prometheus-forward
+```
+
+Then open `http://127.0.0.1:9090`.
 
 Change Kubernetes resources and storage in `helm/iocheck/values.yaml`:
 
