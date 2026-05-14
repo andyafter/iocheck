@@ -7,7 +7,9 @@ Minimal Node.js and TypeScript service scaffold for an IOC checking API.
 - Fastify server bootstrap is in place.
 - Pino logging is configured through Fastify.
 - The server reads `PORT` from the environment and defaults to `3000`.
-- No API routes, database, cache, Docker, Kubernetes, metrics, or autoscaling are implemented yet.
+- Basic `/healthz`, `/readyz`, `/lookup`, and `/ioc` routes are implemented.
+- IOC request validation is handled with Zod.
+- No database, cache, Docker, Kubernetes, metrics, or autoscaling are implemented yet.
 
 ## Requirements
 
