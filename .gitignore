@@ -10,3 +10,8 @@ npm-debug.log*
 
 
 progress.md
+
+# Scripts
+database/seed/batches.json
+__pycache__/
+.venv/
