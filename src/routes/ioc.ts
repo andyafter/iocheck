@@ -1,7 +1,13 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ZodError } from "zod";
 
-import { recordIocUpsert, recordLookup, recordValidationFailure } from "../metrics/index.js";
+import type { AppDependencies } from "../dependencies.js";
+import {
+  recordCacheRequest,
+  recordIocUpsert,
+  recordLookup,
+  recordValidationFailure,
+} from "../metrics/index.js";
 import { iocUpsertRequestSchema, lookupRequestSchema } from "../schemas/ioc.js";
 import type { IocRecord, LookupResponse } from "../types/ioc.js";
 
@@ -14,7 +20,10 @@ function sendValidationError(route: string, reply: FastifyReply, error: ZodError
   });
 }
 
-export async function registerIocRoutes(app: FastifyInstance): Promise<void> {
+export async function registerIocRoutes(
+  app: FastifyInstance,
+  dependencies: AppDependencies,
+): Promise<void> {
   app.post("/lookup", async (request, reply): Promise<LookupResponse | FastifyReply> => {
     const result = lookupRequestSchema.safeParse(request.body);
 
@@ -22,9 +31,37 @@ export async function registerIocRoutes(app: FastifyInstance): Promise<void> {
       return sendValidationError("/lookup", reply, result.error);
     }
 
-    recordLookup(result.data.type, "unknown");
+    try {
+      const cachedResponse = await dependencies.getCachedLookup(result.data);
 
-    return { verdict: "unknown" };
+      if (cachedResponse) {
+        recordCacheRequest("hit", result.data.type);
+        recordLookup(result.data.type, cachedResponse.verdict);
+
+        return cachedResponse;
+      }
+    } catch (error) {
+      request.log.error({ err: error }, "Redis lookup cache get failed");
+    }
+
+    recordCacheRequest("miss", result.data.type);
+
+    const ioc = await dependencies.findIoc(result.data);
+    const response: LookupResponse = ioc ? { verdict: "malicious", ioc } : { verdict: "unknown" };
+    const ttlSeconds =
+      response.verdict === "malicious"
+        ? dependencies.iocCacheTtlSeconds
+        : dependencies.iocNegativeCacheTtlSeconds;
+
+    recordLookup(result.data.type, response.verdict);
+
+    try {
+      await dependencies.setCachedLookup(result.data, response, ttlSeconds);
+    } catch (error) {
+      request.log.error({ err: error }, "Redis lookup cache set failed");
+    }
+
+    return response;
   });
 
   app.post("/ioc", async (request, reply): Promise<IocRecord | FastifyReply> => {
@@ -34,11 +71,21 @@ export async function registerIocRoutes(app: FastifyInstance): Promise<void> {
       return sendValidationError("/ioc", reply, result.error);
     }
 
-    recordIocUpsert(result.data.type, "success");
+    try {
+      const ioc = await dependencies.upsertIoc(result.data);
 
-    return reply.status(201).send({
-      ...result.data,
-      added_at: new Date().toISOString(),
-    });
+      recordIocUpsert(result.data.type, "success");
+
+      try {
+        await dependencies.invalidateCachedLookup(result.data);
+      } catch (error) {
+        request.log.error({ err: error }, "Redis IOC cache invalidation failed");
+      }
+
+      return reply.status(201).send(ioc);
+    } catch (error) {
+      recordIocUpsert(result.data.type, "failure");
+      throw error;
+    }
   });
 }

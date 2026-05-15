@@ -10,9 +10,10 @@ Minimal Node.js and TypeScript service scaffold for an IOC checking API.
 - Basic `/healthz`, `/readyz`, `/lookup`, and `/ioc` routes are implemented.
 - IOC request validation is handled with Zod.
 - PostgreSQL local Docker deployment and the first IOC table migration are defined.
+- Redis read-through lookup caching is wired for IOC lookups.
 - A Dockerfile and Minikube Helm chart are available for the demo stack.
 - A starter Locust load-test setup is available under `load-tests/`.
-- No cache, metrics endpoint, or autoscaling are implemented yet.
+- No autoscaling is implemented yet.
 
 
 
@@ -59,7 +60,7 @@ Database files live in `database/`. This repo uses plain SQL migration files and
 
 ```sh
 cp .env.example .env
-docker compose --env-file .env -f database/docker-compose.yml up -d postgres
+docker compose --env-file .env -f database/docker-compose.yml up -d postgres redis
 docker compose --env-file .env -f database/docker-compose.yml exec postgres psql -U iocheck -d iocheck -c "\d iocs"
 ```
 
@@ -72,6 +73,9 @@ See `database/README.md` for the database layout, reset commands, and seed scrip
 ```sh
 PORT=3000
 IOCHECK_DATABASE_URL=postgres://iocheck:iocheck@localhost:5433/iocheck
+REDIS_URL=redis://localhost:6379
+IOC_CACHE_TTL_SECONDS=600
+IOC_NEGATIVE_CACHE_TTL_SECONDS=60
 ```
 
 This project uses `IOCHECK_DATABASE_URL` instead of the generic `DATABASE_URL` to avoid accidentally connecting to another local database.
@@ -82,6 +86,7 @@ The Helm chart in `helm/iocheck/` deploys:
 
 - the `iocheck` TypeScript service as a Kubernetes Deployment and Service
 - PostgreSQL as one StatefulSet pod with a persistent volume claim
+- Redis as one StatefulSet pod with a persistent volume claim
 - Prometheus as one Deployment pod for later service monitoring
 - Grafana as one Deployment pod with a pre-provisioned Prometheus datasource and `iocheck API` dashboard
 

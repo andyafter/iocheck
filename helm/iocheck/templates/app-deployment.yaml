@@ -30,6 +30,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "iocheck.fullname" . }}-app
                   key: IOCHECK_DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "iocheck.fullname" . }}-app
+                  key: REDIS_URL
+            - name: IOC_CACHE_TTL_SECONDS
+              value: {{ .Values.iocCache.ttlSeconds | quote }}
+            - name: IOC_NEGATIVE_CACHE_TTL_SECONDS
+              value: {{ .Values.iocCache.negativeTtlSeconds | quote }}
           livenessProbe:
             httpGet:
               path: /healthz

@@ -32,6 +32,10 @@ app.kubernetes.io/component: app
 {{- printf "%s-postgres" (include "iocheck.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "iocheck.redisName" -}}
+{{- printf "%s-redis" (include "iocheck.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 {{- define "iocheck.prometheusName" -}}
 {{- printf "%s-prometheus" (include "iocheck.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}

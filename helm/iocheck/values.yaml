@@ -45,6 +45,28 @@ postgres:
       cpu: 500m
       memory: 512Mi
 
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+iocCache:
+  ttlSeconds: 600
+  negativeTtlSeconds: 60
+
 prometheus:
   enabled: true
   image:
