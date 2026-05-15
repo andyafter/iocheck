@@ -11,6 +11,7 @@ Minimal Node.js and TypeScript service scaffold for an IOC checking API.
 - IOC request validation is handled with Zod.
 - PostgreSQL local Docker deployment and the first IOC table migration are defined.
 - A Dockerfile and Minikube Helm chart are available for the demo stack.
+- A starter Locust load-test setup is available under `load-tests/`.
 - No cache, metrics endpoint, or autoscaling are implemented yet.
 
 
@@ -29,6 +30,27 @@ npm run build
 npm start
 npm run lint
 npm run test
+```
+
+## Load Testing
+
+Locust load tests live in `load-tests/`. The starter scenario is configurable with `load-tests/config/basic.env` and records manual study notes under `load-tests/results/`.
+
+```sh
+python3 -m venv .venv-load
+source .venv-load/bin/activate
+python -m pip install -r load-tests/requirements.txt
+
+set -a
+source load-tests/config/basic.env
+set +a
+locust --config load-tests/config/local.conf
+```
+
+Or, after installing Locust:
+
+```sh
+make load-test
 ```
 
 ## Local PostgreSQL

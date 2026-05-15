@@ -4,6 +4,7 @@ coverage/
 .env
 .env.*
 !.env.example
+.venv-load/
 npm-debug.log*
 *.tsbuildinfo
 .DS_Store
