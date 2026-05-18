@@ -13,7 +13,7 @@ Minimal Node.js and TypeScript service scaffold for an IOC checking API.
 - Redis read-through lookup caching is wired for IOC lookups.
 - A Dockerfile and Minikube Helm chart are available for the demo stack.
 - A starter Locust load-test setup is available under `load-tests/`.
-- No autoscaling is implemented yet.
+- Kubernetes HPA autoscaling is available in the Helm chart for the API pods.
 
 
 
@@ -85,6 +85,7 @@ This project uses `IOCHECK_DATABASE_URL` instead of the generic `DATABASE_URL` t
 The Helm chart in `helm/iocheck/` deploys:
 
 - the `iocheck` TypeScript service as a Kubernetes Deployment and Service
+- a HorizontalPodAutoscaler for the `iocheck` API pods
 - PostgreSQL as one StatefulSet pod with a persistent volume claim
 - Redis as one StatefulSet pod with a persistent volume claim
 - Prometheus as one Deployment pod for later service monitoring
@@ -150,12 +151,21 @@ Then open `http://127.0.0.1:3001` and log in with `admin` / `admin`. The chart p
 Change Kubernetes resources and storage in `helm/iocheck/values.yaml`:
 
 - app CPU/memory: `resources`
+- app autoscaling: `autoscaling`
 - database CPU/memory: `postgres.resources`
 - database persistent storage size: `postgres.persistence.size`
 - Prometheus CPU/memory: `prometheus.resources`
 - Grafana CPU/memory and admin credentials: `grafana`
 
-The chart defaults the app to two pods so traffic can be shared. PostgreSQL, Prometheus, and Grafana each run as one pod by design for this local demo.
+The chart enables HPA for the app by default with `minReplicas: 2`, `maxReplicas: 6`, and a CPU utilization target of 70%. Because Kubernetes resource-based HPA depends on the Metrics Server, enable it in Minikube before testing autoscaling:
+
+```sh
+minikube addons enable metrics-server
+make helm-upgrade
+kubectl get hpa --namespace iocheck --watch
+```
+
+When HPA is enabled, the Deployment leaves replica count ownership to the autoscaler. PostgreSQL, Prometheus, and Grafana each run as one pod by design for this local demo.
 
 ## Side Notes
 

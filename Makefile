@@ -29,7 +29,7 @@ helm-uninstall:
 	helm uninstall $(RELEASE) --namespace $(NAMESPACE)
 
 status:
-	kubectl get pods,svc,pvc,pdb --namespace $(NAMESPACE)
+	kubectl get pods,svc,pvc,pdb,hpa --namespace $(NAMESPACE)
 
 app-url:
 	@minikube service $(RELEASE) --namespace $(NAMESPACE) --url

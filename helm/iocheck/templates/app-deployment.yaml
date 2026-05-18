@@ -6,7 +6,9 @@ metadata:
     {{- include "iocheck.labels" . | nindent 4 }}
     app.kubernetes.io/component: app
 spec:
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "iocheck.selectorLabels" . | nindent 6 }}
