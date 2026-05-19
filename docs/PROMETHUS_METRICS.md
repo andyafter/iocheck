@@ -67,3 +67,20 @@ Default Node.js metric for event loop delay, useful for detecting runtime satura
 ## nodejs_gc_duration_seconds_bucket
 Default Node.js histogram for garbage collection duration.
 
+# Kubernetes / HPA Evidence Metrics
+
+## container_cpu_usage_seconds_total
+cAdvisor container CPU counter scraped through the kubelet proxy. The Grafana dashboard uses it to approximate the CPU utilization that metrics-server feeds to CPU-based HPA.
+
+## kube_horizontalpodautoscaler_status_target_metric
+kube-state-metrics gauge for the HPA's observed metric value, such as current CPU utilization.
+
+## kube_horizontalpodautoscaler_spec_target_metric
+kube-state-metrics gauge for the HPA's configured target, such as 70% CPU utilization.
+
+## kube_horizontalpodautoscaler_status_current_replicas
+Current replica count reported by the HPA.
+
+## kube_horizontalpodautoscaler_status_desired_replicas
+Desired replica count computed by the HPA.
+

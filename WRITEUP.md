@@ -119,6 +119,8 @@ CPU never crossed 70% even when p99 was 60× over SLO. Why:
 
 **Conclusion:** CPU is a *trailing* signal for IO-bound services. We need a *leading* signal that rises the moment traffic does. We have two candidates already exposed: `iocheck_http_in_flight_requests` and `rate(iocheck_http_requests_total{route="/lookup"}[1m])`.
 
+The dashboard now makes that failure mode auditable instead of relying on a single screenshot: it shows the HPA-facing CPU signal from cAdvisor, the HPA's reported current/target utilization from kube-state-metrics, replica decisions over time, per-pod `/lookup` RPS, event-loop lag, and `/lookup` p99 next to Redis/Postgres p99. During the CPU-HPA contrast run, `make capture-evidence` also writes `kubectl describe hpa`, rescale events, pod CPU, and a short timestamped replica timeline under `docs/evidence/<timestamp>/`.
+
 #### Second Finding: In Case of Bursted QPS Raise 
 
 ### Challenge 2 — Making pods share load

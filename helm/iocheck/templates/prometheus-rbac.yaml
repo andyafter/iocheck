@@ -7,27 +7,36 @@ metadata:
     {{- include "iocheck.labels" . | nindent 4 }}
     app.kubernetes.io/component: prometheus
 ---
+# ClusterRole because cAdvisor metrics are reached through the apiserver
+# node proxy (`/api/v1/nodes/<name>/proxy/metrics/cadvisor`) and kube-state-metrics
+# lives in a different namespace. Pod discovery is still restricted to the
+# release namespace via the kubernetes_sd_configs `namespaces` selector in
+# prometheus.yml; this ClusterRole only grants the read verbs Prometheus needs
+# to follow node/service/endpoint references for kubelet + KSM scraping.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  name: {{ include "iocheck.prometheusName" . }}
+  name: {{ include "iocheck.prometheusName" . }}-{{ .Release.Namespace }}
   labels:
     {{- include "iocheck.labels" . | nindent 4 }}
     app.kubernetes.io/component: prometheus
 rules:
-  - apiGroups:
-      - ""
+  - apiGroups: [""]
     resources:
+      - nodes
+      - nodes/proxy
+      - nodes/metrics
+      - services
+      - endpoints
       - pods
-    verbs:
-      - get
-      - list
-      - watch
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: {{ include "iocheck.prometheusName" . }}
+  name: {{ include "iocheck.prometheusName" . }}-{{ .Release.Namespace }}
   labels:
     {{- include "iocheck.labels" . | nindent 4 }}
     app.kubernetes.io/component: prometheus
@@ -37,6 +46,6 @@ subjects:
     namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: {{ include "iocheck.prometheusName" . }}
+  kind: ClusterRole
+  name: {{ include "iocheck.prometheusName" . }}-{{ .Release.Namespace }}
 {{- end }}

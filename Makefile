@@ -1,14 +1,18 @@
 RELEASE ?= iocheck
 NAMESPACE ?= iocheck
 KEDA_NAMESPACE ?= keda
+KSM_NAMESPACE ?= kube-system
 CHART ?= helm/iocheck
 IMAGE ?= iocheck
 TAG ?= latest
 POSTGRES_INIT_SQL ?= database/migrations/001_create_iocs.sql
 LOAD_TEST_ENV ?= load-tests/config/basic.env
 LOAD_TEST_CONFIG ?= load-tests/config/local.conf
+EVIDENCE_DIR ?= docs/evidence
+EVIDENCE_SECONDS ?= 60
+LOAD_SEED_COUNT ?= 20
 
-.PHONY: minikube-start image keda-install metrics-server-enable helm-install helm-upgrade helm-uninstall autoscale-hpa autoscale-keda autoscaler-status status app-url prometheus-url grafana-url app-forward prometheus-forward grafana-forward load-test-install load-test
+.PHONY: minikube-start image keda-install kube-state-metrics-install metrics-server-enable helm-install helm-upgrade helm-uninstall autoscale-hpa autoscale-keda autoscaler-status status app-url prometheus-url grafana-url app-forward prometheus-forward grafana-forward seed-load-data load-test-install load-test capture-evidence
 
 minikube-start:
 	minikube start
@@ -24,7 +28,17 @@ keda-install:
 		--create-namespace
 	kubectl wait --for=condition=Established crd/scaledobjects.keda.sh --timeout=90s
 
-helm-install: keda-install image
+# kube-state-metrics powers the HPA-decision panels on the Grafana dashboard
+# (current/target utilization, current/desired replicas). Without it, the
+# "what did the HPA actually see and decide" panels stay empty.
+kube-state-metrics-install:
+	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+	helm repo update prometheus-community
+	helm upgrade --install kube-state-metrics prometheus-community/kube-state-metrics \
+		--namespace $(KSM_NAMESPACE) \
+		--create-namespace
+
+helm-install: keda-install kube-state-metrics-install image
 	helm upgrade --install $(RELEASE) $(CHART) \
 		--namespace $(NAMESPACE) \
 		--create-namespace \
@@ -94,8 +108,50 @@ prometheus-forward:
 grafana-forward:
 	kubectl port-forward --namespace $(NAMESPACE) svc/$(RELEASE)-grafana 3001:3000
 
+seed-load-data:
+	kubectl exec -n $(NAMESPACE) $(RELEASE)-postgres-0 -- psql -U iocheck -d iocheck -v ON_ERROR_STOP=1 -c "WITH generated AS (SELECT 'ip'::text AS type, format('10.66.%s.%s', (n / 256)::int, (n % 256)::int) AS value, 'load_seed'::text AS source, 50 + (n % 51)::int AS score FROM generate_series(1,$(LOAD_SEED_COUNT)) AS n UNION ALL SELECT 'domain'::text AS type, format('seed-%s.bad-ioc.example', lpad(n::text, 3, '0')) AS value, 'load_seed'::text AS source, 50 + (n % 51)::int AS score FROM generate_series(1,$(LOAD_SEED_COUNT)) AS n UNION ALL SELECT 'sha256'::text AS type, lpad(to_hex(n), 64, '0') AS value, 'load_seed'::text AS source, 50 + (n % 51)::int AS score FROM generate_series(1,$(LOAD_SEED_COUNT)) AS n) INSERT INTO iocs (type, value, source, score) SELECT type, value, source, score FROM generated ON CONFLICT (type, value) DO UPDATE SET source = EXCLUDED.source, score = EXCLUDED.score, added_at = NOW();"
+	kubectl exec -n $(NAMESPACE) $(RELEASE)-postgres-0 -- psql -U iocheck -d iocheck -c "SELECT source, type, count(*) FROM iocs WHERE source = 'load_seed' GROUP BY source, type ORDER BY type;"
+
 load-test-install:
 	python3 -m pip install -r load-tests/requirements.txt
 
 load-test:
 	set -a; . $(LOAD_TEST_ENV); set +a; locust --config $(LOAD_TEST_CONFIG)
+
+# Snapshot everything needed to prove "CPU HPA never decided to scale" for the
+# Challenge 1 writeup. Run this DURING a burst (give it ~$(EVIDENCE_SECONDS)s):
+#   make autoscale-hpa
+#   make load-test &     # in another shell
+#   make capture-evidence
+# Output lands in $(EVIDENCE_DIR)/<UTC timestamp>/ as plain text + JSON so the
+# reviewer can diff timestamps between HPA decisions and SLO breaches.
+capture-evidence:
+	@set -e; \
+	ts=$$(date -u +%Y%m%dT%H%M%SZ); \
+	dir=$(EVIDENCE_DIR)/$$ts; \
+	mkdir -p $$dir; \
+	echo "Writing evidence to $$dir"; \
+	kubectl get pods -n $(NAMESPACE) -o wide > $$dir/pods.txt 2>&1 || true; \
+	kubectl get hpa,scaledobject -n $(NAMESPACE) -o wide > $$dir/autoscalers.txt 2>&1 || true; \
+	kubectl describe hpa -n $(NAMESPACE) > $$dir/hpa-describe.txt 2>&1 || true; \
+	kubectl describe scaledobject -n $(NAMESPACE) > $$dir/scaledobject-describe.txt 2>&1 || true; \
+	kubectl get hpa -n $(NAMESPACE) -o yaml > $$dir/hpa.yaml 2>&1 || true; \
+	kubectl get scaledobject -n $(NAMESPACE) -o yaml > $$dir/scaledobject.yaml 2>&1 || true; \
+	kubectl top pods -n $(NAMESPACE) > $$dir/top-pods.txt 2>&1 || echo "metrics-server unavailable" > $$dir/top-pods.txt; \
+	kubectl get events -n $(NAMESPACE) --sort-by=.lastTimestamp > $$dir/events.txt 2>&1 || true; \
+	kubectl get events -n $(NAMESPACE) --field-selector reason=SuccessfulRescale --sort-by=.lastTimestamp > $$dir/rescale-events.txt 2>&1 || true; \
+	echo "---" > $$dir/timeline.txt; \
+	echo "captured_at_utc: $$ts" >> $$dir/timeline.txt; \
+	echo "evidence_window_seconds: $(EVIDENCE_SECONDS)" >> $$dir/timeline.txt; \
+	echo "namespace: $(NAMESPACE)" >> $$dir/timeline.txt; \
+	echo "---" >> $$dir/timeline.txt; \
+	end=$$(($$(date +%s) + $(EVIDENCE_SECONDS))); \
+	while [ $$(date +%s) -lt $$end ]; do \
+		now=$$(date -u +%H:%M:%SZ); \
+		replicas=$$(kubectl get deploy $(RELEASE) -n $(NAMESPACE) -o jsonpath='{.status.readyReplicas}' 2>/dev/null); \
+		hpa_state=$$(kubectl get hpa -n $(NAMESPACE) -o jsonpath='{range .items[*]}{.metadata.name}={.status.currentMetrics}{" desired="}{.status.desiredReplicas}{" last="}{.status.lastScaleTime}{"\n"}{end}' 2>/dev/null); \
+		so_state=$$(kubectl get scaledobject -n $(NAMESPACE) -o jsonpath='{range .items[*]}{.metadata.name}=active:{.status.conditions[?(@.type=="Active")].status}{" ready:"}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' 2>/dev/null); \
+		echo "$$now ready_replicas=$$replicas hpa=[$$hpa_state] scaledobject=[$$so_state]" >> $$dir/timeline.txt; \
+		sleep 5; \
+	done; \
+	echo "Done. See $$dir/."

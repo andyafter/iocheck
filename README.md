@@ -31,6 +31,23 @@ curl -X POST http://127.0.0.1:3000/lookup \
 Prometheus: `make prometheus-forward` → `http://127.0.0.1:9090`
 Grafana: `make grafana-forward` → `http://127.0.0.1:3001` (admin / admin)
 
+## Grafana Metrics
+
+![iocheck Grafana dashboard](docs/assets/grafana-dashboard.png)
+
+- **Request Rate by Route** (`sum by (route) (rate(iocheck_http_requests_total[1m]))`): Requests per second for each API route. Use this to see traffic volume and whether load is mostly hitting `/lookup`, `/healthz`, `/readyz`, or `/ioc`.
+- **/lookup Latency (p95 / p99)** (`histogram_quantile` over `iocheck_http_request_duration_seconds_bucket`): Tail latency for lookup requests. p95 means 95% of lookups are faster than this value; p99 shows the slowest 1% and is useful for spotting spikes.
+- **In-Flight Requests by Pod** (`iocheck_http_in_flight_requests{route="/lookup"}`): Current active `/lookup` requests per pod. High values mean the IO-bound API is busy or requests are queueing.
+- **Lookup Verdicts** (`sum by (verdict) (iocheck_lookup_total)`): Count of lookup results by verdict. This shows how many IOCs were classified as `malicious` vs `unknown`.
+- **HPA CPU Signal (% of request)** (`container_cpu_usage_seconds_total`, `kube_horizontalpodautoscaler_status_target_metric`, `kube_horizontalpodautoscaler_spec_target_metric`): Compares actual container CPU, the CPU value HPA reports, and the HPA target. This explains why CPU-based HPA does or does not scale.
+- **App Memory** (`process_resident_memory_bytes`, `nodejs_heap_size_used_bytes`): Memory used by each app pod. RSS is total process memory; heap used is the active V8 JavaScript heap.
+- **Running iocheck Pods** (`count(up{job="iocheck"} == 1)`): Number of app pods Prometheus can scrape successfully. This is the quick health/replica count in the dashboard.
+- **CPU by Pod (% of requests)** (`rate(process_cpu_seconds_total[2m])` divided by the configured CPU request): Per-pod Node.js CPU usage as a percentage of the Kubernetes CPU request. This helps spot uneven load or a hot pod.
+- **Event Loop Lag by Pod** (`nodejs_eventloop_lag_seconds`): Delay in the Node.js event loop. Higher lag means the runtime is saturated or blocked, even if CPU is not very high.
+- **/lookup RPS by Pod** (`sum by (pod) (rate(iocheck_http_requests_total{route="/lookup"}[1m]))`): Lookup requests per second handled by each pod. KEDA uses lookup RPS as the scaling signal, so this panel shows whether load is balanced across replicas.
+- **HPA Replica Decision** (`kube_horizontalpodautoscaler_status_current_replicas`, `kube_horizontalpodautoscaler_status_desired_replicas`, `count(up{job="iocheck"} == 1)`): Current replicas, desired replicas, and actually ready pods. This shows what the autoscaler wants versus what is running.
+- **Lookup p99 vs Dependency p99** (`histogram_quantile` over lookup, Redis `get`, and PostgreSQL `lookup` histograms): Compares end-to-end lookup latency with Redis and PostgreSQL latency. If dependency p99 rises with lookup p99, the bottleneck is likely Redis or Postgres.
+
 ## Seed Example IOCs
 
 Port-forward the Postgres pod in one terminal:
@@ -50,6 +67,15 @@ python seed.py apply initial_seed
 ```
 
 For more details on the seeding, refer to the README.md in database/seed.
+
+For a larger lookup set, seed generated IOCs directly into the in-cluster database:
+
+```sh
+make seed-load-data
+```
+
+By default this creates 20 IPs, 20 domains, and 20 SHA-256 hashes. The values match the generated lookup data enabled in `load-tests/config/basic.env` by `IOCHECK_GENERATED_SEED_COUNT=20`.
+
 ## Autoscaling
 
 KEDA scales on `sum(rate(iocheck_http_requests_total{route="/lookup"}[1m]))` with a default threshold of 75 rps/replica (`minReplicas: 2`, `maxReplicas: 4`).
@@ -109,6 +135,12 @@ locust -f locustfile.py --host http://127.0.0.1:<port>
 ```
 
 Open the Locust web UI and run with users=500, ramp-up=10–20, duration=1500s.
+
+The default Locust environment mixes the example values with generated seeded values. To change how many generated records Locust targets, edit `IOCHECK_GENERATED_SEED_COUNT` in `load-tests/config/basic.env` and seed the same count with:
+
+```sh
+make seed-load-data LOAD_SEED_COUNT=20
+```
 
 See `load-tests/README.md` for scenarios and result notes.
 

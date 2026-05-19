@@ -15,6 +15,8 @@ spec:
       app.kubernetes.io/component: prometheus
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/prometheus-configmap.yaml") . | sha256sum }}
       labels:
         app.kubernetes.io/name: {{ include "iocheck.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}

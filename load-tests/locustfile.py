@@ -37,6 +37,21 @@ def env_csv(name: str, default: list[str]) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def unique(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(values))
+
+
+def generated_seed_iocs(count: int) -> tuple[list[str], list[str], list[str]]:
+    ips = [f"10.66.{n // 256}.{n % 256}" for n in range(1, count + 1)]
+    domains = [f"seed-{n:03d}.bad-ioc.example" for n in range(1, count + 1)]
+    sha256s = [f"{n:x}".rjust(64, "0") for n in range(1, count + 1)]
+
+    return ips, domains, sha256s
+
+
+GENERATED_SEED_COUNT = env_int("IOCHECK_GENERATED_SEED_COUNT", 0)
+GENERATED_IPS, GENERATED_DOMAINS, GENERATED_SHA256S = generated_seed_iocs(GENERATED_SEED_COUNT)
+
 LOOKUP_IPS = env_csv("IOCHECK_LOOKUP_IPS", ["8.8.8.8", "185.15.59.224", "1.1.1.1"])
 LOOKUP_DOMAINS = env_csv(
     "IOCHECK_LOOKUP_DOMAINS",
@@ -46,6 +61,9 @@ LOOKUP_SHA256S = env_csv(
     "IOCHECK_LOOKUP_SHA256S",
     ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
 )
+LOOKUP_IPS = unique(LOOKUP_IPS + GENERATED_IPS)
+LOOKUP_DOMAINS = unique(LOOKUP_DOMAINS + GENERATED_DOMAINS)
+LOOKUP_SHA256S = unique(LOOKUP_SHA256S + GENERATED_SHA256S)
 
 TASK_WEIGHTS = {
     "lookup": env_weight("IOCHECK_LOOKUP_WEIGHT", 80),

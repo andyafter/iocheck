@@ -12,6 +12,7 @@
 {{- else -}}
 {{- $cpuCores = float64 $cpuReq -}}
 {{- end -}}
+{{- $fullname := include "iocheck.fullname" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -322,7 +323,20 @@ data:
                 "mode": "palette-classic"
               },
               "unit": "percent",
-              "min": 0
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 70
+                  }
+                ]
+              }
             },
             "overrides": []
           },
@@ -350,12 +364,30 @@ data:
                 "type": "prometheus",
                 "uid": "Prometheus"
               },
-              "expr": "sum(rate(process_cpu_seconds_total{job=\"iocheck\"}[2m])) / (count(up{job=\"iocheck\"} == 1) * {{ $cpuCores }}) * 100",
-              "legendFormat": "cpu % of requests",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"{{ .Release.Namespace }}\",pod=~\"{{ $fullname }}-.*\",container!=\"\",container!=\"POD\"}[2m])) / (count(up{job=\"iocheck\"} == 1) * {{ $cpuCores }}) * 100",
+              "legendFormat": "cAdvisor avg CPU % of request",
               "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "kube_horizontalpodautoscaler_status_target_metric{namespace=\"{{ .Release.Namespace }}\",horizontalpodautoscaler=~\"{{ $fullname }}|keda-hpa-{{ $fullname }}\",metric_name=\"cpu\",metric_target_type=\"utilization\"}",
+              "legendFormat": "HPA reported current CPU %",
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "kube_horizontalpodautoscaler_spec_target_metric{namespace=\"{{ .Release.Namespace }}\",horizontalpodautoscaler=~\"{{ $fullname }}|keda-hpa-{{ $fullname }}\",metric_name=\"cpu\",metric_target_type=\"utilization\"}",
+              "legendFormat": "HPA target CPU %",
+              "refId": "C"
             }
           ],
-          "title": "App CPU (% of requests)",
+          "title": "HPA CPU Signal (% of request)",
           "type": "timeseries"
         },
         {
@@ -545,6 +577,262 @@ data:
           ],
           "title": "CPU by Pod (% of requests)",
           "type": "grafana-polystat-panel"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 24
+          },
+          "id": 10,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "max by (pod) (nodejs_eventloop_lag_seconds{job=\"iocheck\"}) and on(pod) (up{job=\"iocheck\"} == 1)",
+              "legendFormat": "{{`{{ pod }}`}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Event Loop Lag by Pod",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false
+              },
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 24
+          },
+          "id": 9,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "sum by (pod) (rate(iocheck_http_requests_total{route=\"/lookup\"}[1m])) and on(pod) (up{job=\"iocheck\"} == 1)",
+              "legendFormat": "{{`{{ pod }}`}}",
+              "refId": "A"
+            }
+          ],
+          "title": "/lookup RPS by Pod",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 24
+          },
+          "id": 11,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "kube_horizontalpodautoscaler_status_current_replicas{namespace=\"{{ .Release.Namespace }}\",horizontalpodautoscaler=~\"{{ $fullname }}|keda-hpa-{{ $fullname }}\"}",
+              "legendFormat": "HPA current replicas",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "kube_horizontalpodautoscaler_status_desired_replicas{namespace=\"{{ .Release.Namespace }}\",horizontalpodautoscaler=~\"{{ $fullname }}|keda-hpa-{{ $fullname }}\"}",
+              "legendFormat": "HPA desired replicas",
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "count(up{job=\"iocheck\"} == 1)",
+              "legendFormat": "ready pods",
+              "refId": "C"
+            }
+          ],
+          "title": "HPA Replica Decision",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 32
+          },
+          "id": 12,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(iocheck_http_request_duration_seconds_bucket{route=\"/lookup\"}[5m])))",
+              "legendFormat": "p99 /lookup",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(iocheck_redis_operation_duration_seconds_bucket{operation=\"get\"}[5m])))",
+              "legendFormat": "p99 redis get",
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(iocheck_postgres_query_duration_seconds_bucket{operation=\"lookup\"}[5m])))",
+              "legendFormat": "p99 postgres lookup",
+              "refId": "C"
+            }
+          ],
+          "title": "Lookup p99 vs Dependency p99",
+          "type": "timeseries"
         }
       ],
       "refresh": "5s",
