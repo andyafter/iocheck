@@ -1,18 +1,31 @@
+# Node / TypeScript build artifacts
 node_modules/
 dist/
 coverage/
+*.tsbuildinfo
+npm-debug.log*
+
+# Local environment files
 .env
 .env.*
 !.env.example
+
+# Python virtual envs (root and nested)
+**/.venv/
+**/venv/
 .venv-load/
-npm-debug.log*
-*.tsbuildinfo
+
+# Python build/cache
+**/__pycache__/
+*.pyc
+
+# Editor / OS noise
 .DS_Store
 
-
+# Author-only working notes
 progress.md
+docs/progress.md
 
-# Scripts
+# Generated load-test reports and seed bookkeeping
+load-tests/results/latest*
 database/seed/batches.json
-__pycache__/
-.venv/

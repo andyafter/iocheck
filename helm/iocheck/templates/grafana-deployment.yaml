@@ -40,6 +40,8 @@ spec:
                   key: admin-password
             - name: GF_USERS_DEFAULT_THEME
               value: dark
+            - name: GF_INSTALL_PLUGINS
+              value: grafana-polystat-panel
           livenessProbe:
             httpGet:
               path: /api/health

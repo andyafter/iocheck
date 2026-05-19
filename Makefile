@@ -1,5 +1,6 @@
 RELEASE ?= iocheck
 NAMESPACE ?= iocheck
+KEDA_NAMESPACE ?= keda
 CHART ?= helm/iocheck
 IMAGE ?= iocheck
 TAG ?= latest
@@ -7,7 +8,7 @@ POSTGRES_INIT_SQL ?= database/migrations/001_create_iocs.sql
 LOAD_TEST_ENV ?= load-tests/config/basic.env
 LOAD_TEST_CONFIG ?= load-tests/config/local.conf
 
-.PHONY: minikube-start image helm-install helm-upgrade helm-uninstall status app-url prometheus-url grafana-url app-forward prometheus-forward grafana-forward load-test-install load-test
+.PHONY: minikube-start image keda-install metrics-server-enable helm-install helm-upgrade helm-uninstall autoscale-hpa autoscale-keda status app-url prometheus-url grafana-url app-forward prometheus-forward grafana-forward load-test-install load-test
 
 minikube-start:
 	minikube start
@@ -15,7 +16,15 @@ minikube-start:
 image:
 	minikube image build -t $(IMAGE):$(TAG) .
 
-helm-install: image
+keda-install:
+	helm repo add kedacore https://kedacore.github.io/charts
+	helm repo update kedacore
+	helm upgrade --install keda kedacore/keda \
+		--namespace $(KEDA_NAMESPACE) \
+		--create-namespace
+	kubectl wait --for=condition=Established crd/scaledobjects.keda.sh --timeout=90s
+
+helm-install: keda-install image
 	helm upgrade --install $(RELEASE) $(CHART) \
 		--namespace $(NAMESPACE) \
 		--create-namespace \
@@ -28,8 +37,29 @@ helm-upgrade: helm-install
 helm-uninstall:
 	helm uninstall $(RELEASE) --namespace $(NAMESPACE)
 
+metrics-server-enable:
+	minikube addons enable metrics-server
+
+autoscale-hpa: metrics-server-enable
+	helm upgrade $(RELEASE) $(CHART) \
+		--namespace $(NAMESPACE) \
+		--reuse-values \
+		--set autoscaling.type=hpa \
+		--set autoscaling.minReplicas=2 \
+		--set autoscaling.maxReplicas=8 \
+		--set autoscaling.targetCPUUtilizationPercentage=70
+
+autoscale-keda:
+	helm upgrade $(RELEASE) $(CHART) \
+		--namespace $(NAMESPACE) \
+		--reuse-values \
+		--set autoscaling.type=keda \
+		--set autoscaling.minReplicas=2 \
+		--set autoscaling.maxReplicas=6 \
+		--set autoscaling.targetCPUUtilizationPercentage=null
+
 status:
-	kubectl get pods,svc,pvc,pdb,hpa --namespace $(NAMESPACE)
+	kubectl get pods,svc,pvc,pdb,hpa,scaledobject --namespace $(NAMESPACE)
 
 app-url:
 	@minikube service $(RELEASE) --namespace $(NAMESPACE) --url

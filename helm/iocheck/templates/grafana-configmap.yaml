@@ -1,4 +1,17 @@
 {{- if .Values.grafana.enabled }}
+{{- /*
+  Convert the app's CPU request (e.g. "100m", "0.5", "1") into a plain "cores"
+  number so the dashboard can compute CPU as a percentage of requests. This
+  keeps the Grafana panels in sync with whatever the user sets in values.yaml,
+  so the dashboard ships correctly to any machine without manual setup.
+*/}}
+{{- $cpuReq := toString .Values.resources.requests.cpu -}}
+{{- $cpuCores := 0.1 -}}
+{{- if hasSuffix "m" $cpuReq -}}
+{{- $cpuCores = divf (float64 (trimSuffix "m" $cpuReq)) 1000.0 -}}
+{{- else -}}
+{{- $cpuCores = float64 $cpuReq -}}
+{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -157,8 +170,8 @@ data:
                 "type": "prometheus",
                 "uid": "Prometheus"
               },
-              "expr": "histogram_quantile(0.95, sum by (le, route) (rate(iocheck_http_request_duration_seconds_bucket[5m])))",
-              "legendFormat": "p95 {{`{{ route }}`}}",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(iocheck_http_request_duration_seconds_bucket{route=\"/lookup\"}[5m])))",
+              "legendFormat": "p95 /lookup",
               "refId": "A"
             },
             {
@@ -166,12 +179,12 @@ data:
                 "type": "prometheus",
                 "uid": "Prometheus"
               },
-              "expr": "histogram_quantile(0.99, sum by (le, route) (rate(iocheck_http_request_duration_seconds_bucket[5m])))",
-              "legendFormat": "p99 {{`{{ route }}`}}",
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(iocheck_http_request_duration_seconds_bucket{route=\"/lookup\"}[5m])))",
+              "legendFormat": "p99 /lookup",
               "refId": "B"
             }
           ],
-          "title": "Lookup/API Latency",
+          "title": "/lookup Latency (p95 / p99)",
           "type": "timeseries"
         },
         {
@@ -230,12 +243,12 @@ data:
                 "type": "prometheus",
                 "uid": "Prometheus"
               },
-              "expr": "sum(iocheck_http_in_flight_requests)",
-              "legendFormat": "in flight",
+              "expr": "sum by (pod, route) (iocheck_http_in_flight_requests)",
+              "legendFormat": "{{`{{ pod }}`}} {{`{{ route }}`}}",
               "refId": "A"
             }
           ],
-          "title": "In-Flight Requests",
+          "title": "In-Flight Requests by Pod",
           "type": "gauge"
         },
         {
@@ -306,7 +319,8 @@ data:
               "color": {
                 "mode": "palette-classic"
               },
-              "unit": "percentunit"
+              "unit": "percent",
+              "min": 0
             },
             "overrides": []
           },
@@ -334,12 +348,12 @@ data:
                 "type": "prometheus",
                 "uid": "Prometheus"
               },
-              "expr": "rate(process_cpu_seconds_total{job=\"iocheck\"}[5m])",
-              "legendFormat": "cpu",
+              "expr": "sum(rate(process_cpu_seconds_total{job=\"iocheck\"}[2m])) / (count(up{job=\"iocheck\"} == 1) * {{ $cpuCores }}) * 100",
+              "legendFormat": "cpu % of requests",
               "refId": "A"
             }
           ],
-          "title": "App CPU",
+          "title": "App CPU (% of requests)",
           "type": "timeseries"
         },
         {
@@ -381,7 +395,7 @@ data:
                 "uid": "Prometheus"
               },
               "expr": "process_resident_memory_bytes{job=\"iocheck\"}",
-              "legendFormat": "rss",
+              "legendFormat": "{{`{{ pod }}`}} rss",
               "refId": "A"
             },
             {
@@ -390,12 +404,143 @@ data:
                 "uid": "Prometheus"
               },
               "expr": "nodejs_heap_size_used_bytes{job=\"iocheck\"}",
-              "legendFormat": "heap used",
+              "legendFormat": "{{`{{ pod }}`}} heap used",
               "refId": "B"
             }
           ],
           "title": "App Memory",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 16
+          },
+          "id": 7,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "count(up{job=\"iocheck\"} == 1)",
+              "legendFormat": "running pods",
+              "refId": "A"
+            }
+          ],
+          "title": "Running iocheck Pods",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "continuous-GrYlRd"
+              },
+              "max": 100,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 50
+                  },
+                  {
+                    "color": "red",
+                    "value": 70
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 18,
+            "x": 6,
+            "y": 16
+          },
+          "id": 8,
+          "options": {
+            "globalShape": "hexagon_pointed_top",
+            "globalDisplayMode": "all",
+            "globalUnitFormat": "percent",
+            "globalDecimals": 1,
+            "globalAutoScaleFonts": true,
+            "globalAutoScalePolygonText": true,
+            "globalAutoScalePolygonFontSize": true,
+            "globalShowValueEnabled": true,
+            "globalShowTimestampEnabled": false,
+            "globalTextFontSize": 12,
+            "globalOperatorName": "current",
+            "ellipseEnabled": false,
+            "globalThresholds": [
+              { "color": "green", "value": null, "state": 0 },
+              { "color": "yellow", "value": 50, "state": 1 },
+              { "color": "red", "value": 70, "state": 2 }
+            ]
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "Prometheus"
+              },
+              "expr": "sum by (pod) (rate(process_cpu_seconds_total{job=\"iocheck\"}[2m])) / {{ $cpuCores }} * 100 or on(pod) (sum by (pod) (up{job=\"iocheck\"}) * 0)",
+              "legendFormat": "{{`{{ pod }}`}}",
+              "refId": "A"
+            }
+          ],
+          "title": "CPU by Pod (% of requests)",
+          "type": "grafana-polystat-panel"
         }
       ],
       "refresh": "5s",

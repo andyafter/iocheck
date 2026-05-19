@@ -1,0 +1,42 @@
+{{- if .Values.prometheus.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "iocheck.prometheusName" . }}
+  labels:
+    {{- include "iocheck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "iocheck.prometheusName" . }}
+  labels:
+    {{- include "iocheck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "iocheck.prometheusName" . }}
+  labels:
+    {{- include "iocheck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "iocheck.prometheusName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "iocheck.prometheusName" . }}
+{{- end }}

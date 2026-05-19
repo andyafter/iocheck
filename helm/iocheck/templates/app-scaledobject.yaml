@@ -1,0 +1,29 @@
+{{- if and .Values.autoscaling.enabled (eq .Values.autoscaling.type "keda") }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "iocheck.fullname" . }}
+  labels:
+    {{- include "iocheck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  scaleTargetRef:
+    name: {{ include "iocheck.fullname" . }}
+  pollingInterval: {{ .Values.autoscaling.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.autoscaling.keda.cooldownPeriod }}
+  minReplicaCount: {{ .Values.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.autoscaling.maxReplicas }}
+  {{- with .Values.autoscaling.behavior }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        {{- toYaml . | nindent 8 }}
+  {{- end }}
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: {{ default (printf "http://%s.%s.svc.cluster.local:%v" (include "iocheck.prometheusName" .) .Release.Namespace .Values.prometheus.service.port) .Values.autoscaling.keda.prometheus.serverAddress | quote }}
+        metricName: {{ .Values.autoscaling.keda.prometheus.metricName | quote }}
+        threshold: {{ .Values.autoscaling.keda.prometheus.threshold | quote }}
+        query: {{ .Values.autoscaling.keda.prometheus.query | quote }}
+{{- end }}
