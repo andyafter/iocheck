@@ -55,7 +55,9 @@ Edit `load-tests/config/basic.env` for scenario behavior:
 - `IOCHECK_WAIT_MIN_SECONDS` and `IOCHECK_WAIT_MAX_SECONDS` control per-user pacing.
 - `IOCHECK_LOOKUP_WEIGHT`, `IOCHECK_HEALTHZ_WEIGHT`, `IOCHECK_READYZ_WEIGHT`, `IOCHECK_METRICS_WEIGHT`, and `IOCHECK_UPSERT_WEIGHT` control the traffic mix.
 - `IOCHECK_LOOKUP_IPS`, `IOCHECK_LOOKUP_DOMAINS`, and `IOCHECK_LOOKUP_SHA256S` control lookup data.
-- `IOCHECK_GENERATED_SEED_COUNT` adds generated lookup values matching `seed-001.bad-ioc.example`, `10.66.0.1`, and equivalent SHA-256 rows through that count.
+- `IOCHECK_GENERATED_SEED_ROWS` adds generated values that match `make seed-load-data`.
+- `IOCHECK_GENERATED_UNKNOWN_ROWS` adds generated values that should miss the database.
+- `IOCHECK_LOOKUP_HIT_WEIGHT` and `IOCHECK_LOOKUP_MISS_WEIGHT` control how often `/lookup` chooses seeded versus unknown values.
 - `IOCHECK_WRITE_ENABLED=true` allows `POST /ioc` traffic when `IOCHECK_UPSERT_WEIGHT` is above `0`.
 
 Edit `load-tests/config/local.conf` for Locust runner settings:

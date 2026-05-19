@@ -41,16 +41,42 @@ def unique(values: list[str]) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-def generated_seed_iocs(count: int) -> tuple[list[str], list[str], list[str]]:
-    ips = [f"10.66.{n // 256}.{n % 256}" for n in range(1, count + 1)]
-    domains = [f"seed-{n:03d}.bad-ioc.example" for n in range(1, count + 1)]
-    sha256s = [f"{n:x}".rjust(64, "0") for n in range(1, count + 1)]
+def generated_seed_iocs(rows: int) -> tuple[list[str], list[str], list[str]]:
+    ips: list[str] = []
+    domains: list[str] = []
+    sha256s: list[str] = []
+
+    for n in range(1, rows + 1):
+        if n % 3 == 1:
+            ips.append(f"10.66.{n // 256}.{n % 256}")
+        elif n % 3 == 2:
+            domains.append(f"seed-{n:04d}.bad-ioc.example")
+        else:
+            sha256s.append(f"{n:x}".rjust(64, "0"))
 
     return ips, domains, sha256s
 
 
-GENERATED_SEED_COUNT = env_int("IOCHECK_GENERATED_SEED_COUNT", 0)
-GENERATED_IPS, GENERATED_DOMAINS, GENERATED_SHA256S = generated_seed_iocs(GENERATED_SEED_COUNT)
+def generated_unknown_iocs(rows: int) -> tuple[list[str], list[str], list[str]]:
+    ips: list[str] = []
+    domains: list[str] = []
+    sha256s: list[str] = []
+
+    for n in range(1, rows + 1):
+        if n % 3 == 1:
+            ips.append(f"10.77.{n // 256}.{n % 256}")
+        elif n % 3 == 2:
+            domains.append(f"unknown-{n:04d}.benign.example")
+        else:
+            sha256s.append(f"{n + 1_000_000:x}".rjust(64, "0"))
+
+    return ips, domains, sha256s
+
+
+GENERATED_SEED_ROWS = env_int("IOCHECK_GENERATED_SEED_ROWS", 0)
+GENERATED_UNKNOWN_ROWS = env_int("IOCHECK_GENERATED_UNKNOWN_ROWS", 100)
+GENERATED_IPS, GENERATED_DOMAINS, GENERATED_SHA256S = generated_seed_iocs(GENERATED_SEED_ROWS)
+UNKNOWN_IPS, UNKNOWN_DOMAINS, UNKNOWN_SHA256S = generated_unknown_iocs(GENERATED_UNKNOWN_ROWS)
 
 LOOKUP_IPS = env_csv("IOCHECK_LOOKUP_IPS", ["8.8.8.8", "185.15.59.224", "1.1.1.1"])
 LOOKUP_DOMAINS = env_csv(
@@ -64,6 +90,12 @@ LOOKUP_SHA256S = env_csv(
 LOOKUP_IPS = unique(LOOKUP_IPS + GENERATED_IPS)
 LOOKUP_DOMAINS = unique(LOOKUP_DOMAINS + GENERATED_DOMAINS)
 LOOKUP_SHA256S = unique(LOOKUP_SHA256S + GENERATED_SHA256S)
+UNKNOWN_LOOKUP_IPS = env_csv("IOCHECK_UNKNOWN_LOOKUP_IPS", ["1.1.1.1"])
+UNKNOWN_LOOKUP_DOMAINS = env_csv("IOCHECK_UNKNOWN_LOOKUP_DOMAINS", ["example.com"])
+UNKNOWN_LOOKUP_SHA256S = env_csv("IOCHECK_UNKNOWN_LOOKUP_SHA256S", [])
+UNKNOWN_LOOKUP_IPS = unique(UNKNOWN_LOOKUP_IPS + UNKNOWN_IPS)
+UNKNOWN_LOOKUP_DOMAINS = unique(UNKNOWN_LOOKUP_DOMAINS + UNKNOWN_DOMAINS)
+UNKNOWN_LOOKUP_SHA256S = unique(UNKNOWN_LOOKUP_SHA256S + UNKNOWN_SHA256S)
 
 TASK_WEIGHTS = {
     "lookup": env_weight("IOCHECK_LOOKUP_WEIGHT", 80),
@@ -78,6 +110,8 @@ if sum(TASK_WEIGHTS.values()) == 0:
 WRITE_ENABLED = env_bool("IOCHECK_WRITE_ENABLED", False)
 UPSERT_SOURCE = os.getenv("IOCHECK_UPSERT_SOURCE", "locust")
 UPSERT_SCORE = env_int("IOCHECK_UPSERT_SCORE", 50)
+LOOKUP_HIT_WEIGHT = env_weight("IOCHECK_LOOKUP_HIT_WEIGHT", 80)
+LOOKUP_MISS_WEIGHT = env_weight("IOCHECK_LOOKUP_MISS_WEIGHT", 20)
 
 
 class IocheckUser(HttpUser):
@@ -107,12 +141,26 @@ class IocheckUser(HttpUser):
             self.upsert()
 
     def lookup(self) -> None:
+        hit_pool = [
+            ("ip", random.choice(LOOKUP_IPS)),
+            ("domain", random.choice(LOOKUP_DOMAINS)),
+            ("sha256", random.choice(LOOKUP_SHA256S)),
+        ]
+        miss_pool = [
+            ("ip", random.choice(UNKNOWN_LOOKUP_IPS)),
+            ("domain", random.choice(UNKNOWN_LOOKUP_DOMAINS)),
+        ]
+        if UNKNOWN_LOOKUP_SHA256S:
+            miss_pool.append(("sha256", random.choice(UNKNOWN_LOOKUP_SHA256S)))
+
+        pools = [hit_pool, miss_pool]
+        weights = [LOOKUP_HIT_WEIGHT, LOOKUP_MISS_WEIGHT]
+        if sum(weights) == 0:
+            weights = [1, 0]
+
+        lookup_pool = random.choices(pools, weights=weights, k=1)[0]
         ioc_type, value = random.choice(
-            [
-                ("ip", random.choice(LOOKUP_IPS)),
-                ("domain", random.choice(LOOKUP_DOMAINS)),
-                ("sha256", random.choice(LOOKUP_SHA256S)),
-            ]
+            lookup_pool
         )
 
         self.client.post(

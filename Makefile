@@ -10,9 +10,9 @@ LOAD_TEST_ENV ?= load-tests/config/basic.env
 LOAD_TEST_CONFIG ?= load-tests/config/local.conf
 EVIDENCE_DIR ?= docs/evidence
 EVIDENCE_SECONDS ?= 60
-LOAD_SEED_COUNT ?= 20
+LOAD_SEED_ROWS ?= 1000
 
-.PHONY: minikube-start image keda-install kube-state-metrics-install metrics-server-enable helm-install helm-upgrade helm-uninstall autoscale-hpa autoscale-keda autoscaler-status status app-url prometheus-url grafana-url app-forward prometheus-forward grafana-forward seed-load-data load-test-install load-test capture-evidence
+.PHONY: minikube-start image keda-install kube-state-metrics-install metrics-server-enable helm-install helm-upgrade helm-uninstall autoscale-hpa autoscale-keda autoscaler-status status app-url prometheus-url grafana-url app-forward prometheus-forward grafana-forward wait-postgres seed-load-data load-test-install load-test capture-evidence
 
 minikube-start:
 	minikube start
@@ -45,6 +45,8 @@ helm-install: keda-install kube-state-metrics-install image
 		--set image.repository=$(IMAGE) \
 		--set image.tag=$(TAG) \
 		--set-file postgres.initSql=$(POSTGRES_INIT_SQL)
+	$(MAKE) wait-postgres
+	$(MAKE) seed-load-data
 
 helm-upgrade: helm-install
 
@@ -108,14 +110,18 @@ prometheus-forward:
 grafana-forward:
 	kubectl port-forward --namespace $(NAMESPACE) svc/$(RELEASE)-grafana 3001:3000
 
+wait-postgres:
+	kubectl rollout status statefulset/$(RELEASE)-postgres --namespace $(NAMESPACE) --timeout=120s
+	kubectl wait --for=condition=Ready pod/$(RELEASE)-postgres-0 --namespace $(NAMESPACE) --timeout=120s
+
 seed-load-data:
-	kubectl exec -n $(NAMESPACE) $(RELEASE)-postgres-0 -- psql -U iocheck -d iocheck -v ON_ERROR_STOP=1 -c "WITH generated AS (SELECT 'ip'::text AS type, format('10.66.%s.%s', (n / 256)::int, (n % 256)::int) AS value, 'load_seed'::text AS source, 50 + (n % 51)::int AS score FROM generate_series(1,$(LOAD_SEED_COUNT)) AS n UNION ALL SELECT 'domain'::text AS type, format('seed-%s.bad-ioc.example', lpad(n::text, 3, '0')) AS value, 'load_seed'::text AS source, 50 + (n % 51)::int AS score FROM generate_series(1,$(LOAD_SEED_COUNT)) AS n UNION ALL SELECT 'sha256'::text AS type, lpad(to_hex(n), 64, '0') AS value, 'load_seed'::text AS source, 50 + (n % 51)::int AS score FROM generate_series(1,$(LOAD_SEED_COUNT)) AS n) INSERT INTO iocs (type, value, source, score) SELECT type, value, source, score FROM generated ON CONFLICT (type, value) DO UPDATE SET source = EXCLUDED.source, score = EXCLUDED.score, added_at = NOW();"
+	kubectl exec -n $(NAMESPACE) $(RELEASE)-postgres-0 -- psql -U iocheck -d iocheck -v ON_ERROR_STOP=1 -c "WITH generated AS (SELECT CASE WHEN n % 3 = 1 THEN 'ip' WHEN n % 3 = 2 THEN 'domain' ELSE 'sha256' END AS type, CASE WHEN n % 3 = 1 THEN format('10.66.%s.%s', (n / 256)::int, (n % 256)::int) WHEN n % 3 = 2 THEN format('seed-%s.bad-ioc.example', lpad(n::text, 4, '0')) ELSE lpad(to_hex(n), 64, '0') END AS value, 'load_seed'::text AS source, 50 + (n % 51)::int AS score FROM generate_series(1,$(LOAD_SEED_ROWS)) AS n) INSERT INTO iocs (type, value, source, score) SELECT type, value, source, score FROM generated ON CONFLICT (type, value) DO UPDATE SET source = EXCLUDED.source, score = EXCLUDED.score, added_at = NOW();"
 	kubectl exec -n $(NAMESPACE) $(RELEASE)-postgres-0 -- psql -U iocheck -d iocheck -c "SELECT source, type, count(*) FROM iocs WHERE source = 'load_seed' GROUP BY source, type ORDER BY type;"
 
 load-test-install:
 	python3 -m pip install -r load-tests/requirements.txt
 
-load-test:
+load-test: load-test-install
 	set -a; . $(LOAD_TEST_ENV); set +a; locust --config $(LOAD_TEST_CONFIG)
 
 # Snapshot everything needed to prove "CPU HPA never decided to scale" for the

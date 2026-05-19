@@ -16,7 +16,15 @@ make helm-install
 make status
 ```
 
-`helm-install` installs KEDA if missing, builds the image in Minikube, and applies the SQL migration.
+Or
+
+```sh
+minikube delete --purge
+docker rm -f minikube
+make minikube-start
+```
+
+`helm-install` installs KEDA and kube-state-metrics if missing, builds the image in Minikube, applies the SQL migration, waits for Postgres, and seeds 1000 generated IOC rows for local load testing.
 
 Port-forward and smoke test:
 
@@ -74,7 +82,7 @@ For a larger lookup set, seed generated IOCs directly into the in-cluster databa
 make seed-load-data
 ```
 
-By default this creates 20 IPs, 20 domains, and 20 SHA-256 hashes. The values match the generated lookup data enabled in `load-tests/config/basic.env` by `IOCHECK_GENERATED_SEED_COUNT=20`.
+By default this creates 1000 total rows split across IPs, domains, and SHA-256 hashes. The values match the generated lookup data enabled in `load-tests/config/basic.env` by `IOCHECK_GENERATED_SEED_ROWS=1000`.
 
 ## Autoscaling
 
@@ -123,6 +131,9 @@ Get the app URL (keep the tunnel terminal open):
 
 ```sh
 make app-url
+
+# or 
+minikube service iocheck -n iocheck --url
 ```
 
 In another terminal, install Locust and run against the printed URL:
@@ -136,11 +147,13 @@ locust -f locustfile.py --host http://127.0.0.1:<port>
 
 Open the Locust web UI and run with users=500, ramp-up=10–20, duration=1500s.
 
-The default Locust environment mixes the example values with generated seeded values. To change how many generated records Locust targets, edit `IOCHECK_GENERATED_SEED_COUNT` in `load-tests/config/basic.env` and seed the same count with:
+The default Locust environment mixes generated seeded values with generated unknown values. To change how many seeded records Locust targets, edit `IOCHECK_GENERATED_SEED_ROWS` in `load-tests/config/basic.env` and seed the same count with:
 
 ```sh
-make seed-load-data LOAD_SEED_COUNT=20
+make seed-load-data LOAD_SEED_ROWS=1000
 ```
+
+`IOCHECK_LOOKUP_HIT_WEIGHT` and `IOCHECK_LOOKUP_MISS_WEIGHT` control the seeded/unknown lookup mix.
 
 See `load-tests/README.md` for scenarios and result notes.
 

@@ -123,6 +123,16 @@ The dashboard now makes that failure mode auditable instead of relying on a sing
 
 #### Second Finding: In Case of Bursted QPS Raise 
 
+I also tested a sharper Locust burst: **1,000 peak users** with a **500 users/sec ramp-up**. This is closer to an acute alert storm than a gradual traffic increase.
+
+![Grafana dashboard during bursted QPS raise](docs/images/bursted-qps-hpa-dashboard.png)
+
+The key behavior was that HPA reacted before the newly created pod had actually absorbed the burst. The first scale-up started while the original pods were still carrying most of the requests, and because the HPA-facing average CPU signal was still very high, the controller immediately had enough evidence to request another replica. In other words, the cluster was not just responding to "current desired capacity"; it was responding to delayed CPU evidence from pods that were already overloaded.
+
+That explains why the dashboard shows replicas climbing quickly while per-pod request distribution is still uneven. A new pod can exist and even become ready before Locust's existing connections, kube-proxy/service balancing, and metric sampling make that pod look useful to the HPA. During that gap, average CPU remains inflated on the hot pods, so CPU-based scaling can overshoot by spinning up another instance before the previous one has had time to take meaningful load.
+
+**Conclusion:** under a bursty QPS raise, CPU HPA is both late and coarse. It sees the pain after queues have already formed, then may add replicas faster than traffic redistributes. This is another reason the final design uses a request-rate signal with bounded scale-up behavior instead of raw CPU.
+
 ### Challenge 2 — Making pods share load
 
 The first thing I found while testing CPU HPA was that **scaling up is not the same as redistributing existing load**.
@@ -162,7 +172,7 @@ I evaluated `iocheck_http_in_flight_requests` as the primary too. It's an even m
 
 **Scale behavior** (`values.yaml → autoscaling.behavior`):
 
-- **Scale up fast.** `stabilizationWindowSeconds: 0`, two policies, `selectPolicy: Max`: either `+100% in 30s` or `+2 pods in 30s`, whichever is bigger. Alert storms are bursty, so we react inside one Prometheus scrape interval (15s) plus a 30s policy window.
+- **Scale up steadily.** `stabilizationWindowSeconds: 0`, with at most `+1 pod per 30s`. Alert storms are bursty, but stepping 2→3→4 keeps the demo easier to inspect and makes each scale event visible in Grafana and `kubectl describe hpa`.
 - **Scale down slow.** `stabilizationWindowSeconds: 120`, `−50% per 60s`. Storms are choppy; we don't want to scale 6→3→6 every minute and pay cold-start latency for nothing. KEDA `cooldownPeriod: 120` reinforces this.
 - `pollingInterval: 15` matches the Prometheus scrape interval; finer would just read the same numbers.
 
