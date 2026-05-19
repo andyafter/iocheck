@@ -304,7 +304,7 @@ data:
                 "type": "prometheus",
                 "uid": "Prometheus"
               },
-              "expr": "sum by (verdict) (iocheck_lookup_total)",
+              "expr": "sum by (verdict) (rate(iocheck_lookup_total[1m]))",
               "legendFormat": "{{`{{ verdict }}`}}",
               "refId": "A"
             }

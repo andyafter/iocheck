@@ -122,7 +122,10 @@ load-test-install:
 	python3 -m pip install -r load-tests/requirements.txt
 
 load-test: load-test-install
-	set -a; . $(LOAD_TEST_ENV); set +a; locust --config $(LOAD_TEST_CONFIG)
+	IOCHECK_BASE_URL_OVERRIDE="$${IOCHECK_BASE_URL:-}"; \
+	set -a; . $(LOAD_TEST_ENV); set +a; \
+	if [ -n "$$IOCHECK_BASE_URL_OVERRIDE" ]; then export IOCHECK_BASE_URL="$$IOCHECK_BASE_URL_OVERRIDE"; fi; \
+	locust --config $(LOAD_TEST_CONFIG)
 
 # Snapshot everything needed to prove "CPU HPA never decided to scale" for the
 # Challenge 1 writeup. Run this DURING a burst (give it ~$(EVIDENCE_SECONDS)s):

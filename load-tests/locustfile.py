@@ -73,7 +73,7 @@ def generated_unknown_iocs(rows: int) -> tuple[list[str], list[str], list[str]]:
     return ips, domains, sha256s
 
 
-GENERATED_SEED_ROWS = env_int("IOCHECK_GENERATED_SEED_ROWS", 0)
+GENERATED_SEED_ROWS = env_int("IOCHECK_GENERATED_SEED_ROWS", 1000)
 GENERATED_UNKNOWN_ROWS = env_int("IOCHECK_GENERATED_UNKNOWN_ROWS", 100)
 GENERATED_IPS, GENERATED_DOMAINS, GENERATED_SHA256S = generated_seed_iocs(GENERATED_SEED_ROWS)
 UNKNOWN_IPS, UNKNOWN_DOMAINS, UNKNOWN_SHA256S = generated_unknown_iocs(GENERATED_UNKNOWN_ROWS)
@@ -112,6 +112,13 @@ UPSERT_SOURCE = os.getenv("IOCHECK_UPSERT_SOURCE", "locust")
 UPSERT_SCORE = env_int("IOCHECK_UPSERT_SCORE", 50)
 LOOKUP_HIT_WEIGHT = env_weight("IOCHECK_LOOKUP_HIT_WEIGHT", 80)
 LOOKUP_MISS_WEIGHT = env_weight("IOCHECK_LOOKUP_MISS_WEIGHT", 20)
+CONNECTION_CLOSE = env_bool("IOCHECK_CONNECTION_CLOSE", True)
+
+
+def request_headers() -> dict[str, str] | None:
+    if not CONNECTION_CLOSE:
+        return None
+    return {"Connection": "close"}
 
 
 class IocheckUser(HttpUser):
@@ -120,6 +127,10 @@ class IocheckUser(HttpUser):
         env_float("IOCHECK_WAIT_MIN_SECONDS", 0.1),
         env_float("IOCHECK_WAIT_MAX_SECONDS", 1.0),
     )
+
+    def close_client_connection(self) -> None:
+        if CONNECTION_CLOSE:
+            self.client.close()
 
     @task
     def traffic_mix(self) -> None:
@@ -163,33 +174,50 @@ class IocheckUser(HttpUser):
             lookup_pool
         )
 
-        self.client.post(
-            "/lookup",
-            json={"type": ioc_type, "value": value},
-            name="POST /lookup",
-        )
+        try:
+            self.client.post(
+                "/lookup",
+                json={"type": ioc_type, "value": value},
+                headers=request_headers(),
+                name="POST /lookup",
+            )
+        finally:
+            self.close_client_connection()
 
     def healthz(self) -> None:
-        self.client.get("/healthz", name="GET /healthz")
+        try:
+            self.client.get("/healthz", headers=request_headers(), name="GET /healthz")
+        finally:
+            self.close_client_connection()
 
     def readyz(self) -> None:
-        self.client.get("/readyz", name="GET /readyz")
+        try:
+            self.client.get("/readyz", headers=request_headers(), name="GET /readyz")
+        finally:
+            self.close_client_connection()
 
     def metrics(self) -> None:
-        self.client.get("/metrics", name="GET /metrics")
+        try:
+            self.client.get("/metrics", headers=request_headers(), name="GET /metrics")
+        finally:
+            self.close_client_connection()
 
     def upsert(self) -> None:
         if not WRITE_ENABLED:
             self.lookup()
             return
 
-        self.client.post(
-            "/ioc",
-            json={
-                "type": "domain",
-                "value": f"locust-{uuid.uuid4().hex}.example.test",
-                "source": UPSERT_SOURCE,
-                "score": UPSERT_SCORE,
-            },
-            name="POST /ioc",
-        )
+        try:
+            self.client.post(
+                "/ioc",
+                json={
+                    "type": "domain",
+                    "value": f"locust-{uuid.uuid4().hex}.example.test",
+                    "source": UPSERT_SOURCE,
+                    "score": UPSERT_SCORE,
+                },
+                headers=request_headers(),
+                name="POST /ioc",
+            )
+        finally:
+            self.close_client_connection()

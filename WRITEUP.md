@@ -183,7 +183,7 @@ End-to-end repro, clean state to evidence (all in the README, summarized here):
 ```sh
 make minikube-start          # fresh cluster
 make helm-install            # builds image, installs KEDA, installs chart, seeds migration
-make app-forward             # in terminal A
+make app-url                 # in terminal A
 make prometheus-forward      # in terminal B
 make grafana-forward         # in terminal C — dashboard “iocheck API”
 kubectl get hpa,scaledobject,pods -n iocheck --watch   # in terminal D
@@ -218,19 +218,23 @@ Failure modes for the metric pipeline:
 
 The general principle I followed: **the autoscaler is allowed to be wrong, but it must fail toward "do nothing" rather than "scale to 1."** KEDA's behavior of holding the last replica count on query failure is correct for that. A defensible next step is to add a fallback `cpu`-based HPA at a high threshold (say 90%) alongside KEDA, purely as a backstop for the case where Prometheus is unhealthy for many minutes — that's noted in the next section.
 
----
 
-## One thing I'd do differently with another week
+# Conversations with ChatGPT and Cursor
 
-**Put a connection pooler in front of Postgres and raise `maxReplicas`.**
+## Just trying my luck with this one
+https://chatgpt.com/share/6a0cab2b-a750-83ec-8ce7-5ba2f529a583
 
-Today, the binding constraint on `maxReplicas` is not the API process — it is the Postgres connection budget. Each `pg.Pool` defaults to 10 connections per pod, so at 4 replicas we are at 40 of ~100 available. If I wanted to defend a higher peak (say 20× rather than 10×), I'd need to either shrink the pool per pod (worse tail latency on cache misses) or add a layer.
+## General Building Steps 
+Here are the general building related conversations I had:
 
-Concretely, with another week I would:
-
-1. Deploy **PgBouncer** as a sidecar or standalone Deployment in transaction-pooling mode. App pods would open many cheap "virtual" connections; PgBouncer would multiplex them onto a small fixed pool to Postgres (e.g., 30 real connections total).
-2. Raise `maxReplicas` to ~12 and re-run the burst to confirm Postgres CPU and lock-wait remain healthy.
-3. Add a **secondary KEDA trigger** on `nodejs_eventloop_lag_seconds` so the autoscaler also reacts to event-loop saturation directly — useful if Redis ever becomes the bottleneck (today Postgres would be hit first because of `pg.Pool` queueing).
-4. Add a **fallback `cpu`-based HPA** at a high threshold (~90%) as a backstop for "Prometheus has been silent for >5 minutes." It would scale to a few extra replicas without contradicting KEDA in normal operation.
-
-The current solution intentionally stops at the simplest thing that demonstrably solves the brief; the changes above are the next-week version that would survive real production traffic.
+- [Kubernetes and Helm planning](ai-conversations/kubernetes-helm-planning.md)
+- [Kubernetes, Helm, and Minikube setup](ai-conversations/kubernetes-helm-minikube-setup.md)
+- [General building steps conversation summary](ai-conversations/general-building-steps.md)
+- [Database verification and seeding script](ai-conversations/database_verification_and_seeding.md)
+- [Redis cache and Minikube verification](ai-conversations/redis-cache-and-minikube-verification.md)
+- [Database verification and load testing setup](ai-conversations/database-load-testing-summary.md)
+- [Redis cache usage check](ai-conversations/redis-cache-usage-check.md)
+- [Kubernetes port-forward, Minikube checks, HPA helper commands](ai-conversations/kubernetes-port-forward-minikube-hpa-notes.md)
+- [Assignment gap review and cache clarification](ai-conversations/assignment-gap-review.md)
+- [Kubernetes load testing setup](ai-conversations/kubernetes-load-testing-setup.md)
+- [Prometheus and Grafana observability setup](ai-conversations/prometheus-grafana-observability.md)

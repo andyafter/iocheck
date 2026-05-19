@@ -153,6 +153,8 @@ The default Locust environment mixes generated seeded values with generated unkn
 make seed-load-data LOAD_SEED_ROWS=1000
 ```
 
+Right now you might need to vibe code a bit in order for the locust to actually fetch the real data in the database for certain percentage, otherwise the API call will always fetch unknown records. 
+
 `IOCHECK_LOOKUP_HIT_WEIGHT` and `IOCHECK_LOOKUP_MISS_WEIGHT` control the seeded/unknown lookup mix.
 
 See `load-tests/README.md` for scenarios and result notes.
