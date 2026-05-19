@@ -54,10 +54,39 @@ For more details on the seeding, refer to the README.md in database/seed.
 
 KEDA scales on `sum(rate(iocheck_http_requests_total{route="/lookup"}[1m]))` with a default threshold of 75 rps/replica (`minReplicas: 2`, `maxReplicas: 6`).
 
+Check which autoscaler is active:
+
+```sh
+make autoscaler-status
+```
+
+Sample output (KEDA mode):
+
+```
+Autoscaler mode: KEDA (Prometheus-based, scales on lookup RPS per pod)
+...
+TRIGGERS=prometheus   TARGETS=0/75 (avg)
+```
+
+### Switching between KEDA and CPU HPA
+
+The Challenge 1 comparison runs the same Locust burst against both modes. Switch with:
+
+```sh
+make autoscale-hpa     # CPU HPA, target 70%, min=2, max=8
+make autoscale-keda    # KEDA on lookup RPS, threshold 75 rps/pod, min=2, max=6
+```
+
+Verify the switch took effect:
+
+```sh
+make autoscaler-status
+```
+
+Watch scaling in real time during a load test:
+
 ```sh
 kubectl get hpa,scaledobject,pods -n iocheck --watch
-make autoscale-hpa    # switch to CPU HPA
-make autoscale-keda   # switch back
 ```
 
 Tune via `helm/iocheck/values.yaml` (`resources`, `autoscaling`, `postgres`, `prometheus`, `grafana`).

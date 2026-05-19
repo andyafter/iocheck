@@ -9,34 +9,35 @@ Repo layout follows the brief: source + manifests + Dockerfile + Makefile + READ
 ## 1. Architecture
 
 ```
-                 ┌───────────────────────────────────────────────┐
-                 │  Kubernetes namespace: iocheck                │
-                 │                                               │
-   client ──►  Service (ClusterIP / NodePort)                    │
-                 │            │                                  │
-                 │            ▼                                  │
-                 │   Deployment iocheck (N replicas, N = 2..6)   │
-                 │   ┌─────────────────────────────────────┐     │
-                 │   │ Fastify + Pino + Zod + prom-client  │     │
-                 │   │ /healthz /readyz /lookup /ioc /metrics    │
-                 │   └─────────────┬───────────────────────┘     │
-                 │                 │                             │
-                 │      ┌──────────┴──────────┐                  │
-                 │      ▼                     ▼                  │
-                 │  Redis (StatefulSet)   PostgreSQL (StatefulSet)
-                 │  read-through cache    primary store          │
-                 │      │                     │                  │
-                 │      └──────────┬──────────┘                  │
-                 │                 ▼                             │
-                 │       Prometheus (Deployment)                 │
-                 │       scrapes per-pod /metrics (k8s SD)       │
-                 │                 │                             │
-                 │                 ▼                             │
-                 │       KEDA ScaledObject ──► HPA ──► Deployment│
-                 │       (Prometheus query, lookup RPS/pod)      │
-                 │                                               │
-                 │       Grafana (provisioned "iocheck API" dashboard)
-                 └───────────────────────────────────────────────┘
+            ┌──────────────────────────────────────────────────────────┐
+            │ Kubernetes namespace: iocheck                            │
+            │                                                          │
+ client ──► │  Service (ClusterIP / NodePort)                          │
+            │                       │                                  │
+            │                       ▼                                  │
+            │  Deployment iocheck (N = 2..6, PDB minAvailable=2)       │
+            │  ┌────────────────────────────────────────────────────┐  │
+            │  │ Fastify + Pino + Zod + prom-client                 │  │
+            │  │ /healthz /readyz /lookup /ioc /metrics             │  │
+            │  │ liveness + readiness + startup probes              │  │
+            │  └──────────────────────┬─────────────────────────────┘  │
+            │                         │                                │
+            │             ┌───────────┴────────────┐                   │
+            │             ▼                        ▼                   │
+            │     Redis (StatefulSet)     PostgreSQL (StatefulSet)     │
+            │     read-through cache      primary store                │
+            │             │                        │                   │
+            │             └───────────┬────────────┘                   │
+            │                         ▼                                │
+            │             Prometheus (Deployment)                      │
+            │             scrapes per-pod /metrics (k8s SD)            │
+            │                         │                                │
+            │                         ▼                                │
+            │     KEDA ScaledObject ──► HPA ──► Deployment             │
+            │     (Prometheus query, lookup RPS/pod)                   │
+            │                                                          │
+            │     Grafana — provisioned "iocheck API" dashboard        │
+            └──────────────────────────────────────────────────────────┘
 ```
 
 Everything is one Helm chart (`helm/iocheck/`), one image (`iocheck:latest`), and one Makefile entry-point (`make helm-install`).
@@ -106,11 +107,23 @@ CPU never crossed 70% even when p99 was 60× over SLO. Why:
 
 ### Challenge 2 — Making pods share load
 
-Three things together:
+The first thing I found while testing CPU HPA was that **scaling up is not the same as redistributing existing load**.
 
-1. **Stateless pods.** All per-request state lives in Redis or Postgres. Pods are interchangeable, no sticky sessions, no in-process LRU that would create hot replicas.
-2. **Kubernetes Service in front of the Deployment** (`app-service.yaml`). kube-proxy load-balances connections across endpoints. Combined with Locust opening many short connections (default Python `requests` behavior), the per-pod RPS distribution stays inside ~10% of the mean.
-3. **Per-pod observability.** Prometheus is configured with `kubernetes_sd_configs: role=pod` (see `prometheus-configmap.yaml`) and the relabel rules add a `pod` label to every series. The Grafana dashboard "iocheck API" has a panel that breaks `iocheck_http_requests_total` and event-loop lag down by pod, so during a walkthrough I can show that all N replicas are doing roughly equal work. The PDB (`minAvailable: 2`) guarantees we never collapse load onto a single pod during voluntary disruption.
+With CPU HPA enabled, Locust held a steady burst at about 650 lookup RPS. HPA did scale the Deployment from 2 to 5 pods, but the live traffic stayed concentrated on the two pods that already had established client connections:
+
+![Locust steady burst during CPU HPA test](docs/images/locust-hpa-steady.png)
+
+![Grafana showing uneven CPU after CPU HPA scale-up](docs/images/hpa-uneven-pod-cpu.png)
+
+The important detail is that Kubernetes Service load-balancing happens at the connection level. Existing TCP connections are not moved when new pods appear, and Locust keeps HTTP connections open. So the new pods showed ~2% CPU while the original two pods were still above 100% of their CPU request.
+
+That gave me the first operational conclusion:
+
+> CPU HPA can add replicas and still fail to improve load distribution, because existing client connections are not rebalanced onto the new pods.
+
+The app itself is safe to distribute: all per-request state lives in Redis or Postgres, there are no sticky sessions, and pods are interchangeable. The remaining load-sharing problem is at the client/service boundary. The practical fixes are to increase the number of client-side connections during tests (`locust --processes -1` or distributed workers), shorten/limit keep-alive lifetime for the API, or put an L7 proxy/Ingress in front so balancing can happen per request instead of per connection.
+
+Per-pod observability is what made this visible. Prometheus uses `kubernetes_sd_configs: role=pod` and relabels the pod name onto app metrics; Grafana shows in-flight requests and CPU per pod. The PDB (`minAvailable: 2`) still ensures voluntary disruptions do not collapse the app below the intended two-pod floor.
 
 ### Challenge 3 — Autoscaler design and replica bounds
 

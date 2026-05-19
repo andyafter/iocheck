@@ -8,7 +8,7 @@ POSTGRES_INIT_SQL ?= database/migrations/001_create_iocs.sql
 LOAD_TEST_ENV ?= load-tests/config/basic.env
 LOAD_TEST_CONFIG ?= load-tests/config/local.conf
 
-.PHONY: minikube-start image keda-install metrics-server-enable helm-install helm-upgrade helm-uninstall autoscale-hpa autoscale-keda status app-url prometheus-url grafana-url app-forward prometheus-forward grafana-forward load-test-install load-test
+.PHONY: minikube-start image keda-install metrics-server-enable helm-install helm-upgrade helm-uninstall autoscale-hpa autoscale-keda autoscaler-status status app-url prometheus-url grafana-url app-forward prometheus-forward grafana-forward load-test-install load-test
 
 minikube-start:
 	minikube start
@@ -60,6 +60,21 @@ autoscale-keda:
 
 status:
 	kubectl get pods,svc,pvc,pdb,hpa,scaledobject --namespace $(NAMESPACE)
+
+autoscaler-status:
+	@if kubectl get scaledobject $(RELEASE) --namespace $(NAMESPACE) >/dev/null 2>&1; then \
+		echo "Autoscaler mode: KEDA (Prometheus-based, scales on lookup RPS per pod)"; \
+		echo ""; \
+		kubectl get scaledobject $(RELEASE) --namespace $(NAMESPACE); \
+		echo ""; \
+		kubectl get hpa --namespace $(NAMESPACE); \
+	elif kubectl get hpa $(RELEASE) --namespace $(NAMESPACE) >/dev/null 2>&1; then \
+		echo "Autoscaler mode: CPU HPA (scales on CPU utilization)"; \
+		echo ""; \
+		kubectl get hpa $(RELEASE) --namespace $(NAMESPACE); \
+	else \
+		echo "Autoscaler mode: none (no ScaledObject or HPA found in namespace $(NAMESPACE))"; \
+	fi
 
 app-url:
 	@minikube service $(RELEASE) --namespace $(NAMESPACE) --url
