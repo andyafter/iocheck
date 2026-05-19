@@ -52,7 +52,7 @@ python seed.py apply initial_seed
 For more details on the seeding, refer to the README.md in database/seed.
 ## Autoscaling
 
-KEDA scales on `sum(rate(iocheck_http_requests_total{route="/lookup"}[1m]))` with a default threshold of 75 rps/replica (`minReplicas: 2`, `maxReplicas: 6`).
+KEDA scales on `sum(rate(iocheck_http_requests_total{route="/lookup"}[1m]))` with a default threshold of 75 rps/replica (`minReplicas: 2`, `maxReplicas: 4`).
 
 Check which autoscaler is active:
 
@@ -74,7 +74,7 @@ The Challenge 1 comparison runs the same Locust burst against both modes. Switch
 
 ```sh
 make autoscale-hpa     # CPU HPA, target 70%, min=2, max=8
-make autoscale-keda    # KEDA on lookup RPS, threshold 75 rps/pod, min=2, max=6
+make autoscale-keda    # KEDA on lookup RPS, threshold 75 rps/pod, min=2, max=4
 ```
 
 Verify the switch took effect:

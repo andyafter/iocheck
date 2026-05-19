@@ -4,7 +4,7 @@ autoscaling:
   enabled: true
   type: keda
   minReplicas: 2
-  maxReplicas: 6
+  maxReplicas: 4
   targetCPUUtilizationPercentage: null
   targetMemoryUtilizationPercentage: null
   keda:

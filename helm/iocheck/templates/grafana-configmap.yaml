@@ -536,8 +536,10 @@ data:
                 "type": "prometheus",
                 "uid": "Prometheus"
               },
-              "expr": "sum by (pod) (rate(process_cpu_seconds_total{job=\"iocheck\"}[2m])) / {{ $cpuCores }} * 100 or on(pod) (sum by (pod) (up{job=\"iocheck\"}) * 0)",
+              "expr": "(sum by (pod) (rate(process_cpu_seconds_total{job=\"iocheck\"}[2m])) / {{ $cpuCores }} * 100 or on(pod) (sum by (pod) (up{job=\"iocheck\"}) * 0)) and on(pod) (up{job=\"iocheck\"} == 1)",
+              "instant": true,
               "legendFormat": "{{`{{ pod }}`}}",
+              "range": false,
               "refId": "A"
             }
           ],

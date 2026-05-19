@@ -55,7 +55,7 @@ autoscale-keda:
 		--reuse-values \
 		--set autoscaling.type=keda \
 		--set autoscaling.minReplicas=2 \
-		--set autoscaling.maxReplicas=6 \
+		--set autoscaling.maxReplicas=4 \
 		--set autoscaling.targetCPUUtilizationPercentage=null
 
 status:
