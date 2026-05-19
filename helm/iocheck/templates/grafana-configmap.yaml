@@ -243,8 +243,10 @@ data:
                 "type": "prometheus",
                 "uid": "Prometheus"
               },
-              "expr": "sum by (pod, route) (iocheck_http_in_flight_requests)",
-              "legendFormat": "{{`{{ pod }}`}} {{`{{ route }}`}}",
+              "expr": "sum by (pod) (iocheck_http_in_flight_requests{route=\"/lookup\"}) and on(pod) (up{job=\"iocheck\"} == 1)",
+              "instant": true,
+              "legendFormat": "{{`{{ pod }}`}}",
+              "range": false,
               "refId": "A"
             }
           ],
