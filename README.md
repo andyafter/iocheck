@@ -31,6 +31,25 @@ curl -X POST http://127.0.0.1:3000/lookup \
 Prometheus: `make prometheus-forward` → `http://127.0.0.1:9090`
 Grafana: `make grafana-forward` → `http://127.0.0.1:3001` (admin / admin)
 
+## Seed Example IOCs
+
+Port-forward the Postgres pod in one terminal:
+
+```sh
+kubectl port-forward -n iocheck svc/iocheck-postgres 5433:5432
+```
+
+In another terminal, point the seed script at it and apply the initial batch:
+
+```sh
+cd database/seed
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+echo "IOCHECK_DATABASE_URL=postgres://iocheck:iocheck@localhost:5433/iocheck" > .env
+python seed.py apply initial_seed
+```
+
+For more details on the seeding, refer to the README.md in database/seed.
 ## Autoscaling
 
 KEDA scales on `sum(rate(iocheck_http_requests_total{route="/lookup"}[1m]))` with a default threshold of 75 rps/replica (`minReplicas: 2`, `maxReplicas: 6`).
